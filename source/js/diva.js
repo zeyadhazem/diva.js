@@ -716,13 +716,6 @@ var DivaSettingsValidator = new ValidationRunner({
             if (!isValidSetting('zoomLevel', newZoomLevel))
                 return false;
 
-            if (!Transition.supported)
-            {
-                return reloadViewer({
-                    zoomLevel: newZoomLevel
-                });
-            }
-
             // If no focal point was given, zoom on the center of the viewport
             if (focalPoint == null)
             {
@@ -739,52 +732,137 @@ var DivaSettingsValidator = new ValidationRunner({
                 };
             }
 
-            var zoomRatio = Math.pow(2, newZoomLevel - settings.zoomLevel);
-
-            // Scale padding with zoom
-            settings.unclampedVerticalPadding *= zoomRatio;
-            settings.horizontalPadding *= zoomRatio;
-
-            // Make sure the vertical padding is at least 40, if plugin icons are enabled
-            settings.verticalPadding = (settings.pageTools.length) ? Math.max(settings.unclampedVerticalPadding, 40) : settings.unclampedVerticalPadding;
-
-            settings.goDirectlyTo = focalPoint.pageIndex;
-
-            // calculate distance from cursor coordinates to center of viewport
-            var focalXToCenter = focalPoint.viewportRelative.x - (settings.panelWidth / 2);
-            var focalYToCenter = focalPoint.viewportRelative.y - (settings.panelHeight / 2);
-
-            // calculate horizontal/verticalOffset: distance from viewport center to page upper left corner
-            settings.horizontalOffset = (focalPoint.pageRelative.x * zoomRatio) - focalXToCenter;
-            settings.verticalOffset = (focalPoint.pageRelative.y * zoomRatio) - focalYToCenter;
-
-            // Set up the origin for the transform
-            originX = focalPoint.viewportRelative.x + settings.viewport.left;
-            originY = focalPoint.viewportRelative.y + settings.viewport.top;
-            settings.innerElement.style.transformOrigin = originX + 'px ' + originY + 'px';
-
-            // Update the zoom level
-            settings.oldZoomLevel = settings.zoomLevel;
+            var initialZoomLevel = settings.oldZoomLevel = settings.zoomLevel;
             settings.zoomLevel = newZoomLevel;
 
-            // If first zoom, set transition parameters TODO css class
-            if (!settings.isZooming)
+            settings.renderer.animate({
+                duration: 300,
+                parameters: {
+                    zoomLevel: {
+                        from: initialZoomLevel,
+                        to: newZoomLevel
+                    }
+                },
+                getConfig: function (parameters)
+                {
+                    // FIXME: Need to change settings.zoomLevel for getPageLayouts,
+                    // but this is gross
+                    var zoomLevel = settings.zoomLevel = parameters.zoomLevel;
+
+                    var pageLayouts = getPageLayouts(self);
+                    var padding = getPadding();
+
+                    return {
+                        pageLayouts: pageLayouts,
+                        padding: padding,
+                        zoomLevel: zoomLevel,
+                        verticallyOriented: settings.verticallyOriented || settings.inGrid,
+                        position: getViewportPosition(zoomLevel)
+                    };
+                },
+                onEnd: function ()
+                {
+                    settings.zoomLevel = newZoomLevel;
+
+                    var position = getViewportPosition(newZoomLevel);
+                    settings.goDirectlyTo = position.anchorPage;
+                    settings.verticalOffset = position.verticalOffset;
+                    settings.horizontalOffset = position.horizontalOffset;
+
+                    // Now render with the previously set zoomLevel
+                    reloadViewer({});
+                }
+            });
+
+            function getViewportPosition(zoomLevel)
             {
-                initiateZoomAnimation();
+                var zoomRatio = Math.pow(2, zoomLevel - initialZoomLevel);
+
+                // calculate distance from cursor coordinates to center of viewport
+                var focalXToCenter = focalPoint.viewportRelative.x - (settings.panelWidth / 2);
+                var focalYToCenter = focalPoint.viewportRelative.y - (settings.panelHeight / 2);
+
+                // calculate horizontal/verticalOffset: distance from viewport center to page upper left corner
+                var horizontalOffset = (focalPoint.pageRelative.x * zoomRatio) - focalXToCenter;
+                var verticalOffset = (focalPoint.pageRelative.y * zoomRatio) - focalYToCenter;
+
+                return {
+                    anchorPage: focalPoint.pageIndex,
+                    verticalOffset: verticalOffset,
+                    horizontalOffset: horizontalOffset
+                };
             }
 
-            // If still zooming, zoomRatio needs to be multiplied by the previous zoomRatio and is reset on transitionend
-            zoomRatio *= settings.previousZoomRatio;
-            settings.previousZoomRatio = zoomRatio;
 
-            // Transition to new zoom level
-            settings.innerElement.style.transform = 'scale(' + zoomRatio + ')';
-
-            // Set flag to indicate zooming is in progress until loadDocument is called by transitionend
-            settings.isZooming = true;
-
-            // Starts preloading pages for the new zoom level
-            settings.renderer.preload();
+            //if (!Transition.supported)
+            //{
+            //    return reloadViewer({
+            //        zoomLevel: newZoomLevel
+            //    });
+            //}
+            //
+            //// If no focal point was given, zoom on the center of the viewport
+            //if (focalPoint == null)
+            //{
+            //    focalPoint = {
+            //        pageIndex: settings.currentPageIndex,
+            //        viewportRelative: {
+            //            x: settings.panelWidth / 2,
+            //            y: settings.panelHeight / 2
+            //        },
+            //        pageRelative: {
+            //            x: settings.horizontalOffset,
+            //            y: settings.verticalOffset
+            //        }
+            //    };
+            //}
+            //
+            //var zoomRatio = Math.pow(2, newZoomLevel - settings.zoomLevel);
+            //
+            //// Scale padding with zoom
+            //settings.unclampedVerticalPadding *= zoomRatio;
+            //settings.horizontalPadding *= zoomRatio;
+            //
+            //// Make sure the vertical padding is at least 40, if plugin icons are enabled
+            //settings.verticalPadding = (settings.pageTools.length) ? Math.max(settings.unclampedVerticalPadding, 40) : settings.unclampedVerticalPadding;
+            //
+            //settings.goDirectlyTo = focalPoint.pageIndex;
+            //
+            //// calculate distance from cursor coordinates to center of viewport
+            //var focalXToCenter = focalPoint.viewportRelative.x - (settings.panelWidth / 2);
+            //var focalYToCenter = focalPoint.viewportRelative.y - (settings.panelHeight / 2);
+            //
+            //// calculate horizontal/verticalOffset: distance from viewport center to page upper left corner
+            //settings.horizontalOffset = (focalPoint.pageRelative.x * zoomRatio) - focalXToCenter;
+            //settings.verticalOffset = (focalPoint.pageRelative.y * zoomRatio) - focalYToCenter;
+            //
+            //// Set up the origin for the transform
+            //originX = focalPoint.viewportRelative.x + settings.viewport.left;
+            //originY = focalPoint.viewportRelative.y + settings.viewport.top;
+            //settings.innerElement.style.transformOrigin = originX + 'px ' + originY + 'px';
+            //
+            //// Update the zoom level
+            //settings.oldZoomLevel = settings.zoomLevel;
+            //settings.zoomLevel = newZoomLevel;
+            //
+            //// If first zoom, set transition parameters TODO css class
+            //if (!settings.isZooming)
+            //{
+            //    initiateZoomAnimation();
+            //}
+            //
+            //// If still zooming, zoomRatio needs to be multiplied by the previous zoomRatio and is reset on transitionend
+            //zoomRatio *= settings.previousZoomRatio;
+            //settings.previousZoomRatio = zoomRatio;
+            //
+            //// Transition to new zoom level
+            //settings.innerElement.style.transform = 'scale(' + zoomRatio + ')';
+            //
+            //// Set flag to indicate zooming is in progress until loadDocument is called by transitionend
+            //settings.isZooming = true;
+            //
+            //// Starts preloading pages for the new zoom level
+            //settings.renderer.preload();
 
             // Update the slider
             diva.Events.publish("ZoomLevelDidChange", [newZoomLevel], self);

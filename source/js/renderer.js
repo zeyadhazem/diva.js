@@ -6,6 +6,7 @@ var elt = require('./utils/elt');
 var getDocumentLayout = require('./document-layout');
 var ImageCache = require('./image-cache');
 var ImageRequestHandler = require('./image-request-handler');
+var InterpolateAnimation = require('./interpolate-animation');
 var Transition = require('./utils/transition');
 
 
@@ -25,6 +26,7 @@ function Renderer(options, hooks)
     this._renderedPages = null;
     this._dimens = null;
     this._pageLookup = null;
+    this._animation = null;
 
     // FIXME(wabain): What level should this be maintained at?
     // Diva global?
@@ -277,6 +279,36 @@ Renderer.prototype.goto = function (pageIndex, verticalOffset, horizontalOffset)
     {
         var pages = this._getPageInfoForUpdateHook();
         this._hooks.onViewDidUpdate(pages, pageIndex);
+    }
+};
+
+Renderer.prototype.animate = function (options)
+{
+    this._clearAnimation();
+
+    var getConfig = options.getConfig;
+    var self = this;
+
+    this._animation = InterpolateAnimation.animate({
+        duration: options.duration,
+        parameters: options.parameters,
+        onUpdate: function (values)
+        {
+            var config = getConfig(values);
+
+            // TODO: Do image preloading, work with that
+            self.load(config, self._getImageSourcesForPage);
+        },
+        onEnd: options.onEnd
+    });
+};
+
+Renderer.prototype._clearAnimation = function ()
+{
+    if (this._animation)
+    {
+        this._animation.cancel();
+        this._animation = null;
     }
 };
 

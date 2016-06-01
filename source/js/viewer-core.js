@@ -285,39 +285,63 @@ function ViewerCore(element, options, publicInstance)
 
         updateViewHandlerAndRendering();
 
-        var getImageSourcesForPage;
+        var sourceProvider;
 
         if (settings.inGrid)
         {
-            getImageSourcesForPage = function (page) {
-                var url = settings.manifest.getPageImageURL(page.index, {
-                    width: page.dimensions.width
-                });
+            sourceProvider = {
+                getAllTilesForPage: function (page)
+                {
+                    return [sourceProvider.getBestTilesForPage(page)];
+                },
+                getBestTilesForPage: function (page)
+                {
+                    var url = settings.manifest.getPageImageURL(page.index, {
+                        width: page.dimensions.width
+                    });
 
-                return [{
-                    url: url,
-                    scaleRatio: 1,
-                    dimensions: page.dimensions,
-                    offset: {
-                        top: 0,
-                        left: 0
-                    }
-                }];
+                    return [{
+                        url: url,
+                        scaleRatio: 1,
+                        dimensions: page.dimensions,
+                        offset: {
+                            top: 0,
+                            left: 0
+                        }
+                    }];
+                }
             };
         }
         else
         {
-            getImageSourcesForPage = function (page)
-            {
-                return settings.manifest.getPageImageTiles(page.index, settings.zoomLevel, {
-                    width: settings.tileWidth,
-                    height: settings.tileHeight
-                });
+            var tileDimens = {
+                width: settings.tileWidth,
+                height: settings.tileHeight
+            };
+
+            sourceProvider = {
+                getBestTilesForPage: function (page)
+                {
+                    return settings.manifest.getPageImageTiles(page.index, settings.zoomLevel, tileDimens);
+                },
+                getAllTilesForPage: function (page)
+                {
+                    var levels = [];
+
+                    for (var i=0; i < settings.zoomLevel; i++)
+                    {
+                        levels.push(settings.manifest.scalePageImageTiles(page.index, i, settings.zoomLevel, tileDimens));
+                    }
+
+                    levels.push(settings.manifest.getPageImageTiles(page.index, settings.zoomLevel, tileDimens));
+
+                    return levels;
+                }
             };
         }
 
         if (viewerState.renderer)
-            viewerState.renderer.load(getRendererState(), getImageSourcesForPage);
+            viewerState.renderer.load(getRendererState(), sourceProvider);
 
         // For the iPad - wait until this request finishes before accepting others
         if (viewerState.scaleWait)

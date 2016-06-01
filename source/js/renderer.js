@@ -3,6 +3,8 @@
 var debug = require('debug')('diva:Renderer');
 
 var elt = require('./utils/elt');
+
+var CompositeImage = require('./composite-image');
 var getDocumentLayout = require('./document-layout');
 var ImageCache = require('./image-cache');
 var ImageRequestHandler = require('./image-request-handler');
@@ -22,9 +24,12 @@ function Renderer(options, hooks)
     this._canvas = elt('canvas', { class: 'diva-viewer-canvas' });
     this._ctx = this._canvas.getContext('2d');
 
+    this._sourceResolver = null;
     this._renderedPages = null;
     this._dimens = null;
     this._pageLookup = null;
+    this._compositeImages = null;
+    this._renderedTiles = null;
 
     // FIXME(wabain): What level should this be maintained at?
     // Diva global?
@@ -43,14 +48,15 @@ Renderer.getCompatibilityErrors = function ()
     ];
 };
 
-Renderer.prototype.load = function (config, getImageSourcesForPage)
+Renderer.prototype.load = function (config, sourceResolver)
 {
     if (this._hooks.onViewWillLoad)
         this._hooks.onViewWillLoad();
 
-    this._getImageSourcesForPage = getImageSourcesForPage;
+    this._sourceResolver = sourceResolver;
     this._dimens = getDocumentLayout(config);
     this._pageLookup = getPageLookup(this._dimens.pageGroups);
+    this._compositeImages = {};
 
     this._updateDocumentSize();
 
@@ -147,44 +153,98 @@ Renderer.prototype._render = function (direction) // jshint ignore:line
     }, this);
 
     this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
-    newRenderedPages.forEach(this._queueTilesForPage, this);
+
+    newRenderedPages.forEach(function (pageIndex)
+    {
+        if (!this._compositeImages[pageIndex])
+        {
+            var page = this._pageLookup[pageIndex];
+            var composite = new CompositeImage(this._sourceResolver.getAllTilesForPage(page));
+            composite.updateFromCache(this._cache);
+            this._compositeImages[pageIndex] = composite;
+        }
+
+        this._initiatePageTileRequests(pageIndex);
+    }, this);
+
+    if (this._renderedPages)
+    {
+        this._renderedPages.forEach(function (pageIndex)
+        {
+            if (newRenderedPages.indexOf(pageIndex) === -1)
+            {
+                delete this._compositeImages[pageIndex];
+                // TODO: Other teardown. Cache stuff?
+            }
+        }, this);
+    }
 
     this._renderedPages = newRenderedPages;
+    this._paint();
 };
 
-Renderer.prototype._queueTilesForPage = function (pageIndex)
+Renderer.prototype._paint = function ()
+{
+    var renderedTiles = [];
+
+    this._renderedPages.forEach(function (pageIndex)
+    {
+        this._compositeImages[pageIndex].getTiles().forEach(function (tile)
+        {
+            renderedTiles.push(tile.url);
+
+            if (this._isTileVisible(pageIndex, tile))
+                this._drawTile(pageIndex, tile, this._cache.get(tile.url));
+        }, this);
+    }, this);
+
+    var cache = this._cache;
+
+    handleChanges(this._renderedTiles || [], renderedTiles, {
+        added: function (url)
+        {
+            cache.acquire(url);
+        },
+        removed: function (url)
+        {
+            cache.release(url);
+        }
+    });
+
+    this._renderedTiles = renderedTiles;
+};
+
+Renderer.prototype._initiatePageTileRequests = function (pageIndex)
 {
     // TODO(wabain): Debounce
-    var tileSources = this._getImageSourcesForPage(this._pageLookup[pageIndex]);
+    var tileSources = this._sourceResolver.getBestTilesForPage(this._pageLookup[pageIndex]);
+    var composite = this._compositeImages[pageIndex];
 
     tileSources.forEach(function (source, tileIndex)
     {
-        if (this._pendingRequests[source.url] || !this._isTileVisible(pageIndex, source))
+        if (this._pendingRequests[source.url] || this._cache.has(source.url) || !this._isTileVisible(pageIndex, source))
             return;
-
-        if (this._cache.has(source.url))
-        {
-            this._drawTile(pageIndex, tileIndex, source, this._cache.get(source.url));
-            return;
-        }
 
         this._pendingRequests[source.url] = new ImageRequestHandler(source.url, function (img)
         {
             delete this._pendingRequests[source.url];
             this._cache.put(source.url, img);
 
-            if (!this._isTileVisible(pageIndex, source))
+            // Awkward way to check for updates
+            if (composite === this._compositeImages[pageIndex])
             {
-                debug('Page %s, tile %s no longer visible on image load', pageIndex, tileIndex);
-                return;
-            }
+                composite.updateWithLoadedUrls([source.url]);
 
-            this._drawTile(pageIndex, tileIndex, source, img);
+                if (this._isTileVisible(pageIndex, source))
+                    this._paint();
+                else
+                    debug('Page %s, tile %s no longer visible on image load', pageIndex, tileIndex);
+            }
         }.bind(this));
     }, this);
 };
 
-Renderer.prototype._drawTile = function (pageIndex, tileIndex, tileRecord, img)
+Renderer.prototype._drawTile = function (pageIndex, tileRecord, img)
 {
     var tileOffset = this._getTileToDocumentOffset(pageIndex, tileRecord);
 
@@ -212,11 +272,11 @@ Renderer.prototype._drawTile = function (pageIndex, tileIndex, tileRecord, img)
     var sourceWidth = destWidth / tileRecord.scaleRatio;
     var sourceHeight = destHeight / tileRecord.scaleRatio;
 
-    debug.enabled && debug('Drawing page %s, tile %s from %s, %s to viewport at %s, %s, scale %s%%',
-        pageIndex, tileIndex,
-        sourceXOffset, sourceYOffset,
-        canvasX, canvasY,
-        Math.round(tileRecord.scaleRatio * 100));
+    //debug.enabled && debug('Drawing page %s, tile %s from %s, %s to viewport at %s, %s, scale %s%%',
+    //    pageIndex, tileIndex,
+    //    sourceXOffset, sourceYOffset,
+    //    canvasX, canvasY,
+    //    Math.round(tileRecord.scaleRatio * 100));
 
     this._ctx.drawImage(
         img,
@@ -416,4 +476,22 @@ function getPageRegionFromGroupInfo(page)
         left: left,
         right: right
     };
+}
+
+function handleChanges(oldArray, newArray, callbacks)
+{
+    if (oldArray === newArray)
+        return;
+
+    oldArray.forEach(function (oldEntry)
+    {
+        if (newArray.indexOf(oldEntry) === -1)
+            callbacks.removed(oldEntry);
+    });
+
+    newArray.forEach(function (newEntry)
+    {
+        if (oldArray.indexOf(newEntry) === -1)
+            callbacks.added(newEntry);
+    });
 }

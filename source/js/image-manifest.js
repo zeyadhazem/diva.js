@@ -70,8 +70,11 @@ ImageManifest.prototype.getPageImageURL = function (pageIndex, size)
  */
 ImageManifest.prototype.getPageImageTiles = function (pageIndex, zoomLevel, tileDimensions)
 {
-    var imageZoomLevel = Math.ceil(zoomLevel);
+    return this.scalePageImageTiles(pageIndex, Math.ceil(zoomLevel), zoomLevel, tileDimensions);
+};
 
+ImageManifest.prototype.scalePageImageTiles = function (pageIndex, imageZoomLevel, scaledZoomLevel, tileDimensions)
+{
     var page = this.pages[pageIndex];
 
     var rows = Math.ceil(page.d[imageZoomLevel].h / tileDimensions.height);
@@ -94,7 +97,7 @@ ImageManifest.prototype.getPageImageTiles = function (pageIndex, zoomLevel, tile
                 tileDimensions: tileDimensions
             });
 
-            var scaleRatio = getScaleRatio(imageZoomLevel, zoomLevel);
+            var scaleRatio = getScaleRatio(imageZoomLevel, scaledZoomLevel);
 
             // FIXME: Dimensions should account for partial tiles (e.g. the
             // last row and column in a tiled image)

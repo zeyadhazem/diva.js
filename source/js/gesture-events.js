@@ -89,7 +89,9 @@ function onPinch(elem, callback)
                     pageY: (touches[0].clientY + touches[1].clientY) / 2
                 };
 
-                callback(event, getRelativeOffset(event.currentTarget, touchCenter), zoomDelta);
+                callback(event, getRelativeOffset(event.currentTarget, touchCenter), startDistance, moveDistance);
+
+                startDistance = moveDistance;
             }
         }
     });

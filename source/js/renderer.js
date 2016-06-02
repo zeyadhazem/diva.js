@@ -225,22 +225,30 @@ Renderer.prototype._initiatePageTileRequests = function (pageIndex)
         if (this._pendingRequests[source.url] || this._cache.has(source.url) || !this._isTileVisible(pageIndex, source))
             return;
 
-        this._pendingRequests[source.url] = new ImageRequestHandler(source.url, function (img)
-        {
-            delete this._pendingRequests[source.url];
-            this._cache.put(source.url, img);
-
-            // Awkward way to check for updates
-            if (composite === this._compositeImages[pageIndex])
+        this._pendingRequests[source.url] = new ImageRequestHandler({
+            url: source.url,
+            load: function (img)
             {
-                composite.updateWithLoadedUrls([source.url]);
+                delete this._pendingRequests[source.url];
+                this._cache.put(source.url, img);
 
-                if (this._isTileVisible(pageIndex, source))
-                    this._paint();
-                else
-                    debug('Page %s, tile %s no longer visible on image load', pageIndex, tileIndex);
-            }
-        }.bind(this));
+                // Awkward way to check for updates
+                if (composite === this._compositeImages[pageIndex])
+                {
+                    composite.updateWithLoadedUrls([source.url]);
+
+                    if (this._isTileVisible(pageIndex, source))
+                        this._paint();
+                    else
+                        debug('Page %s, tile %s no longer visible on image load', pageIndex, tileIndex);
+                }
+            }.bind(this),
+            error: function ()
+            {
+                // TODO: Could make a limited number of retries, etc.
+                delete this._pendingRequests[source.url];
+            }.bind(this)
+        });
     }, this);
 };
 

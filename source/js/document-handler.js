@@ -29,7 +29,7 @@ DocumentHandler.prototype.onPinch = function (event, coords, startDistance, endD
 
     var settings = this._viewerCore.getSettings();
 
-    var newZoomLevel = Math.log(Math.pow(2, settings.zoomLevel) * endDistance / (startDistance * Math.log(2)));
+    var newZoomLevel = Math.log(Math.pow(2, settings.zoomLevel) * endDistance / (startDistance * Math.log(2))) / Math.log(2);
     newZoomLevel = Math.max(settings.minZoomLevel, newZoomLevel);
     newZoomLevel = Math.min(settings.maxZoomLevel, newZoomLevel);
 
@@ -42,12 +42,13 @@ DocumentHandler.prototype.onPinch = function (event, coords, startDistance, endD
     viewerState.scaleWait = true;
 
     var centerOffset = viewerState.renderer.getPageToViewportCenterOffset(position.anchorPage);
+    var scaleRatio = 1 / Math.pow(2, settings.zoomLevel - newZoomLevel);
 
     this._viewerCore.reload({
         zoomLevel: newZoomLevel,
         goDirectlyTo: position.anchorPage,
-        horizontalOffset: centerOffset.x + position.offset.left,
-        verticalOffset: centerOffset.y + position.offset.top
+        horizontalOffset: (centerOffset.x - position.offset.left) + position.offset.left * scaleRatio,
+        verticalOffset: (centerOffset.y - position.offset.top) + position.offset.top * scaleRatio
     });
 };
 

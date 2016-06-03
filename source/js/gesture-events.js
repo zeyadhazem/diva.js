@@ -6,7 +6,7 @@ module.exports = {
 
 var DOUBLE_CLICK_TIMEOUT = 500;
 
-var PINCH_DISTANCE_THRESHOLD = 100;
+var PINCH_DISTANCE_THRESHOLD = 0;
 
 var DOUBLE_TAP_DISTANCE_THRESHOLD = 50;
 var DOUBLE_TAP_TIMEOUT = 250;
@@ -90,8 +90,6 @@ function onPinch(elem, callback)
                 };
 
                 callback(event, getRelativeOffset(event.currentTarget, touchCenter), startDistance, moveDistance);
-
-                startDistance = moveDistance;
             }
         }
     });

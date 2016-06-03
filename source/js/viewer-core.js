@@ -4,7 +4,6 @@ require('./utils/jquery-extensions');
 
 var elt = require('./utils/elt');
 var getScrollbarWidth = require('./utils/get-scrollbar-width');
-var Transition = require('./utils/transition');
 
 var gestureEvents = require('./gesture-events');
 var diva = require('./diva-global');
@@ -548,19 +547,9 @@ function ViewerCore(element, options, publicInstance)
     // Called to handle any zoom level
     var handleZoom = function (newZoomLevel, focalPoint)
     {
-        var originX;
-        var originY;
-
         // If the zoom level provided is invalid, return false
         if (!isValidOption('zoomLevel', newZoomLevel))
             return false;
-
-        if (!Transition.supported)
-        {
-            return reloadViewer({
-                zoomLevel: newZoomLevel
-            });
-        }
 
         // If no focal point was given, zoom on the center of the viewport
         if (focalPoint == null)
@@ -577,16 +566,8 @@ function ViewerCore(element, options, publicInstance)
             };
         }
 
-        var zoomRatio = Math.pow(2, newZoomLevel - settings.zoomLevel);
-
-        // Scale padding with zoom
-        viewerState.unclampedVerticalPadding *= zoomRatio;
-        viewerState.horizontalPadding *= zoomRatio;
-
-        // Make sure the vertical padding is at least 40, if plugin icons are enabled
-        viewerState.verticalPadding = (viewerState.pageTools.length) ? Math.max(viewerState.unclampedVerticalPadding, 40) : viewerState.unclampedVerticalPadding;
-
-        viewerState.options.goDirectlyTo = focalPoint.anchorPage;
+        var initialZoomLevel = viewerState.oldZoomLevel = settings.zoomLevel;
+        viewerState.options.zoomLevel = newZoomLevel;
 
         var pageRegion = viewerState.renderer.getPageRegion(focalPoint.anchorPage);
 
@@ -596,37 +577,59 @@ function ViewerCore(element, options, publicInstance)
         var focalYToCenter = (pageRegion.top + focalPoint.offset.top) -
             (settings.viewport.top + (settings.viewport.height / 2));
 
-        // calculate horizontal/verticalOffset: distance from viewport center to page upper left corner
-        viewerState.horizontalOffset = (focalPoint.offset.left * zoomRatio) - focalXToCenter;
-        viewerState.verticalOffset = (focalPoint.offset.top * zoomRatio) - focalYToCenter;
+        viewerState.renderer.animate({
+            duration: 300,
+            parameters: {
+                zoomLevel: {
+                    from: initialZoomLevel,
+                    to: newZoomLevel
+                }
+            },
+            getConfig: function (parameters)
+            {
+                // FIXME: Need to change options.zoomLevel for getPageLayouts,
+                // but this is gross
+                var zoomLevel = viewerState.options.zoomLevel = parameters.zoomLevel;
 
-        // Set up the origin for the transform
-        originX = pageRegion.left + focalPoint.offset.left;
-        originY = pageRegion.top + focalPoint.offset.top;
-        viewerState.innerElement.style.transformOrigin = originX + 'px ' + originY + 'px';
+                var pageLayouts = getPageLayouts(settings);
+                var padding = getPadding();
 
-        // Update the zoom level
-        viewerState.oldZoomLevel = settings.zoomLevel;
-        viewerState.options.zoomLevel = newZoomLevel;
+                return {
+                    pageLayouts: pageLayouts,
+                    padding: padding,
+                    zoomLevel: zoomLevel,
+                    verticallyOriented: settings.verticallyOriented || settings.inGrid,
+                    position: getViewportPosition(zoomLevel)
+                };
+            },
+            onEnd: function ()
+            {
+                viewerState.options.zoomLevel = newZoomLevel;
 
-        // If first zoom, set transition parameters TODO css class
-        if (!viewerState.isZooming)
+                var position = getViewportPosition(newZoomLevel);
+                viewerState.options.goDirectlyTo = position.anchorPage;
+                viewerState.verticalOffset = position.verticalOffset;
+                viewerState.horizontalOffset = position.horizontalOffset;
+
+                // Now render with the previously set zoomLevel
+                reloadViewer({});
+            }
+        });
+
+        function getViewportPosition(zoomLevel)
         {
-            initiateZoomAnimation();
+            var zoomRatio = Math.pow(2, zoomLevel - initialZoomLevel);
+
+            // calculate horizontal/verticalOffset: distance from viewport center to page upper left corner
+            var horizontalOffset = (focalPoint.offset.left * zoomRatio) - focalXToCenter;
+            var verticalOffset = (focalPoint.offset.top * zoomRatio) - focalYToCenter;
+
+            return {
+                anchorPage: focalPoint.anchorPage,
+                verticalOffset: verticalOffset,
+                horizontalOffset: horizontalOffset
+            };
         }
-
-        // If still zooming, zoomRatio needs to be multiplied by the previous zoomRatio and is reset on transitionend
-        zoomRatio *= viewerState.previousZoomRatio;
-        viewerState.previousZoomRatio = zoomRatio;
-
-        // Transition to new zoom level
-        viewerState.innerElement.style.transform = 'scale(' + zoomRatio + ')';
-
-        // Set flag to indicate zooming is in progress until loadDocument is called by transitionend
-        viewerState.isZooming = true;
-
-        // Starts preloading pages for the new zoom level
-        viewerState.renderer.preload();
 
         // Update the slider
         publish("ZoomLevelDidChange", newZoomLevel);
@@ -635,30 +638,6 @@ function ViewerCore(element, options, publicInstance)
         viewerState.viewportObject.off('scroll');
 
         return true;
-    };
-
-    var initiateZoomAnimation = function ()
-    {
-        var fallbackMs = 300;
-
-        var endCallback = function ()
-        {
-            viewerState.isZooming = false;
-
-            viewerState.previousZoomRatio = 1;
-
-            // Now render with the previously set zoomLevel
-            reloadViewer({});
-
-            viewerState.innerElement.removeEventListener(Transition.endEvent, endCallback, false);
-            clearTimeout(fallbackTimeoutId);
-        };
-
-        // Ensure the callback is run even if the end event doesn't fire
-        viewerState.innerElement.addEventListener(Transition.endEvent, endCallback, false);
-        var fallbackTimeoutId = setTimeout(endCallback, fallbackMs);
-
-        viewerState.innerElement.style[Transition.property] = 'transform .3s cubic-bezier(0.000, 0.990, 1.000, 0.995)';
     };
 
     /*

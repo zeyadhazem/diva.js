@@ -8,7 +8,7 @@ var CompositeImage = require('./composite-image');
 var getDocumentLayout = require('./document-layout');
 var ImageCache = require('./image-cache');
 var ImageRequestHandler = require('./image-request-handler');
-var Transition = require('./utils/transition');
+var InterpolateAnimation = require('./interpolate-animation');
 
 
 module.exports = Renderer;
@@ -30,6 +30,7 @@ function Renderer(options, hooks)
     this._pageLookup = null;
     this._compositeImages = null;
     this._renderedTiles = null;
+    this._animation = null;
 
     // FIXME(wabain): What level should this be maintained at?
     // Diva global?
@@ -87,14 +88,7 @@ Renderer.prototype.load = function (config, sourceResolver)
 
 Renderer.prototype._updateDocumentSize = function ()
 {
-    var elem = this._documentElement;
-
-    // Post-zoom: clear scaling
-    elem.style[Transition.property] = '';
-    elem.style.transform = '';
-    elem.style.transformOrigin = '';
-
-    elt.setAttributes(elem, {
+    elt.setAttributes(this._documentElement, {
         style: {
             height: this._dimens.dimensions.height + 'px',
             width: this._dimens.dimensions.width + 'px'
@@ -365,6 +359,36 @@ Renderer.prototype.goto = function (pageIndex, verticalOffset, horizontalOffset)
     {
         var pages = this._getPageInfoForUpdateHook();
         this._hooks.onViewDidUpdate(pages, pageIndex);
+    }
+};
+
+Renderer.prototype.animate = function (options)
+{
+    this._clearAnimation();
+
+    var getConfig = options.getConfig;
+    var self = this;
+
+    this._animation = InterpolateAnimation.animate({
+        duration: options.duration,
+        parameters: options.parameters,
+        onUpdate: function (values)
+        {
+            var config = getConfig(values);
+
+            // TODO: Do image preloading, work with that
+            self.load(config, self._sourceResolver);
+        },
+        onEnd: options.onEnd
+    });
+};
+
+Renderer.prototype._clearAnimation = function ()
+{
+    if (this._animation)
+    {
+        this._animation.cancel();
+        this._animation = null;
     }
 };
 

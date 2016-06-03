@@ -159,7 +159,7 @@ Renderer.prototype._render = function (direction) // jshint ignore:line
         if (!this._compositeImages[pageIndex])
         {
             var page = this._pageLookup[pageIndex];
-            var composite = new CompositeImage(this._sourceResolver.getAllTilesForPage(page));
+            var composite = new CompositeImage(this._sourceResolver.getAllZoomLevelsForPage(page));
             composite.updateFromCache(this._cache);
             this._compositeImages[pageIndex] = composite;
         }
@@ -191,25 +191,39 @@ Renderer.prototype._paint = function ()
     {
         this._compositeImages[pageIndex].getTiles().forEach(function (tile)
         {
-            renderedTiles.push(tile.url);
-
             if (this._isTileVisible(pageIndex, tile))
+            {
+                renderedTiles.push(tile.url);
                 this._drawTile(pageIndex, tile, this._cache.get(tile.url));
+            }
         }, this);
     }, this);
 
     var cache = this._cache;
 
-    handleChanges(this._renderedTiles || [], renderedTiles, {
-        added: function (url)
-        {
-            cache.acquire(url);
-        },
-        removed: function (url)
-        {
-            cache.release(url);
-        }
+    var changes = findChanges(this._renderedTiles || [], renderedTiles);
+
+    changes.added.forEach(function (url)
+    {
+        debug.enabled && debug('Tile ...%s now visible', url.slice(-20));
+        cache.acquire(url);
     });
+
+    changes.removed.forEach(function (url)
+    {
+        debug.enabled && debug('Tile ...%s not visible', url.slice(-20));
+        cache.release(url);
+    });
+
+    if (changes.removed)
+    {
+        // FIXME: Should only need to update the composite images
+        // for which tiles were removed
+        this._renderedPages.forEach(function (pageIndex)
+        {
+            this._compositeImages[pageIndex].updateFromCache(this._cache);
+        }, this);
+    }
 
     this._renderedTiles = renderedTiles;
 };
@@ -217,7 +231,7 @@ Renderer.prototype._paint = function ()
 Renderer.prototype._initiatePageTileRequests = function (pageIndex)
 {
     // TODO(wabain): Debounce
-    var tileSources = this._sourceResolver.getBestTilesForPage(this._pageLookup[pageIndex]);
+    var tileSources = this._sourceResolver.getBestZoomLevelForPage(this._pageLookup[pageIndex]).tiles;
     var composite = this._compositeImages[pageIndex];
 
     tileSources.forEach(function (source, tileIndex)
@@ -280,8 +294,9 @@ Renderer.prototype._drawTile = function (pageIndex, tileRecord, img)
     var sourceWidth = destWidth / tileRecord.scaleRatio;
     var sourceHeight = destHeight / tileRecord.scaleRatio;
 
-    //debug.enabled && debug('Drawing page %s, tile %s from %s, %s to viewport at %s, %s, scale %s%%',
-    //    pageIndex, tileIndex,
+    //debug.enabled && debug('Drawing page %s, tile %sx (%s, %s) from %s, %s to viewport at %s, %s, scale %s%%',
+    //    pageIndex,
+    //    tileRecord.sourceScaleFactor, tileRecord.row, tileRecord.col,
     //    sourceXOffset, sourceYOffset,
     //    canvasX, canvasY,
     //    Math.round(tileRecord.scaleRatio * 100));
@@ -486,20 +501,28 @@ function getPageRegionFromGroupInfo(page)
     };
 }
 
-function handleChanges(oldArray, newArray, callbacks)
+function findChanges(oldArray, newArray)
 {
     if (oldArray === newArray)
-        return;
-
-    oldArray.forEach(function (oldEntry)
     {
-        if (newArray.indexOf(oldEntry) === -1)
-            callbacks.removed(oldEntry);
+        return {
+            added: [],
+            removed: []
+        };
+    }
+
+    var removed = oldArray.filter(function (oldEntry)
+    {
+        return newArray.indexOf(oldEntry) === -1;
     });
 
-    newArray.forEach(function (newEntry)
+    var added = newArray.filter(function (newEntry)
     {
-        if (oldArray.indexOf(newEntry) === -1)
-            callbacks.added(newEntry);
+        return oldArray.indexOf(newEntry) === -1;
     });
+
+    return {
+        added: added,
+        removed: removed
+    };
 }

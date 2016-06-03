@@ -103,6 +103,8 @@ ImageManifest.prototype.scalePageImageTiles = function (pageIndex, imageZoomLeve
             // last row and column in a tiled image)
             tiles.push({
                 scaleRatio: scaleRatio,
+                row: row,
+                col: col,
                 dimensions: {
                     height: tileDimensions.height * scaleRatio,
                     width: tileDimensions.width * scaleRatio
@@ -116,7 +118,13 @@ ImageManifest.prototype.scalePageImageTiles = function (pageIndex, imageZoomLeve
         }
     }
 
-    return tiles;
+    return {
+        // FIXME
+        sourceScaleFactor: 1 + (this.maxZoom - imageZoomLevel),
+        rows: rows,
+        cols: cols,
+        tiles: tiles
+    };
 };
 
 ImageManifest.prototype.getMaxWidth = zoomedPropertyGetter('_maxWidths');

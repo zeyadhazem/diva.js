@@ -285,60 +285,7 @@ function ViewerCore(element, options, publicInstance)
 
         updateViewHandlerAndRendering();
 
-        var sourceProvider;
-
-        if (settings.inGrid)
-        {
-            sourceProvider = {
-                getAllTilesForPage: function (page)
-                {
-                    return [sourceProvider.getBestTilesForPage(page)];
-                },
-                getBestTilesForPage: function (page)
-                {
-                    var url = settings.manifest.getPageImageURL(page.index, {
-                        width: page.dimensions.width
-                    });
-
-                    return [{
-                        url: url,
-                        scaleRatio: 1,
-                        dimensions: page.dimensions,
-                        offset: {
-                            top: 0,
-                            left: 0
-                        }
-                    }];
-                }
-            };
-        }
-        else
-        {
-            var tileDimens = {
-                width: settings.tileWidth,
-                height: settings.tileHeight
-            };
-
-            sourceProvider = {
-                getBestTilesForPage: function (page)
-                {
-                    return settings.manifest.getPageImageTiles(page.index, settings.zoomLevel, tileDimens);
-                },
-                getAllTilesForPage: function (page)
-                {
-                    var levels = [];
-
-                    for (var i=0; i < settings.zoomLevel; i++)
-                    {
-                        levels.push(settings.manifest.scalePageImageTiles(page.index, i, settings.zoomLevel, tileDimens));
-                    }
-
-                    levels.push(settings.manifest.getPageImageTiles(page.index, settings.zoomLevel, tileDimens));
-
-                    return levels;
-                }
-            };
-        }
+        var sourceProvider = getCurrentSourceProvider();
 
         if (viewerState.renderer)
             viewerState.renderer.load(getRendererState(), sourceProvider);
@@ -444,6 +391,70 @@ function ViewerCore(element, options, publicInstance)
 
             viewerState.renderer = new Renderer(options, hooks);
         }
+    };
+
+    var getCurrentSourceProvider = function ()
+    {
+        if (settings.inGrid)
+        {
+            var gridSourceProvider = {
+                getAllZoomLevelsForPage: function (page)
+                {
+                    return [gridSourceProvider.getBestZoomLevelForPage(page)];
+                },
+                getBestZoomLevelForPage: function (page)
+                {
+                    var url = settings.manifest.getPageImageURL(page.index, {
+                        width: page.dimensions.width
+                    });
+
+                    return {
+                        sourceScaleFactor: 1, // FIXME
+                        rows: 1,
+                        cols: 1,
+                        tiles: [{
+                            url: url,
+                            scaleRatio: 1,
+                            row: 0,
+                            col: 0,
+                            dimensions: page.dimensions,
+                            offset: {
+                                top: 0,
+                                left: 0
+                            }
+                        }]
+                    };
+                }
+            };
+
+            return gridSourceProvider;
+        }
+
+        var tileDimens = {
+            width: settings.tileWidth,
+            height: settings.tileHeight
+        };
+
+        return {
+            getBestZoomLevelForPage: function (page)
+            {
+                return settings.manifest.getPageImageTiles(page.index, settings.zoomLevel, tileDimens);
+            },
+            getAllZoomLevelsForPage: function (page)
+            {
+                var levels = [];
+
+                for (var i=0; i < settings.zoomLevel; i++)
+                {
+                    levels.push(settings.manifest.scalePageImageTiles(page.index, i, settings.zoomLevel, tileDimens));
+                }
+
+                levels.push(settings.manifest.getPageImageTiles(page.index, settings.zoomLevel, tileDimens));
+                levels.reverse();
+
+                return levels;
+            }
+        };
     };
 
     // TODO: The usage of padding variables is still really

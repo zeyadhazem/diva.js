@@ -7,34 +7,80 @@ module.exports = CompositeImage;
  * Utility class to composite tiles into a complete image
  * and track the rendered state of an image as new tiles
  * load.
- *
- * This is a placeholder implementation: it just says to
- * render all available tiles, even if they aren't visible!
  */
 
 /**
- * @param zoomLevel {number}
- * @param tilesByLevel {Array.<Tile>}
+ * @param levels {Array.<Tile>}
  * @constructor
  */
-function CompositeImage(tilesByLevel)
+function CompositeImage(levels)
 {
-    this._urls = {};
+    this._levels = levels;  // Assume levels sorted high-res first
+    var urlsToTiles = this._urlsToTiles = {};
 
-    var tiles = this._tiles = [];
-
-    tilesByLevel.forEach(function (level)
+    levels.forEach(function (level, levelIndex)
     {
-        tiles.push.apply(tiles, level);
+        level.tiles.forEach(function (tile)
+        {
+            urlsToTiles[tile.url] = {
+                levelIndex: levelIndex,
+                row: tile.row,
+                col: tile.col
+            };
+        });
     });
+
+    this._resetLoadTracking();
 }
+
+CompositeImage.prototype._resetLoadTracking = function ()
+{
+    this._loadedByLevel = this._levels.map(function (level)
+    {
+        return new TileLoadMap(level.rows, level.cols);
+    });
+};
 
 CompositeImage.prototype.getTiles = function ()
 {
-    return this._tiles.filter(function (tile)
+    var tiles = [];
+
+    // TODO: Handle non-contiguous scale factors
+
+    this._levels.forEach(function (level, levelIndex)
     {
-        return this._urls[tile.url];
+        var priorLoaded = levelIndex > 0 ? this._loadedByLevel[levelIndex - 1] : null;
+        var loaded = this._loadedByLevel[levelIndex];
+
+        var additionalTiles = level.tiles.filter(function (tile)
+        {
+            return loaded.isLoaded(tile.row, tile.col);
+        });
+
+        // FIXME: Is it better to draw all of a partially covered tile,
+        // with some of it ultimately covered, or to pick out the region
+        // which needs to be drawn?
+        if (priorLoaded)
+        {
+            // Detect covered tiles
+            additionalTiles = additionalTiles.filter(function (tile)
+            {
+                var highResRow = tile.row * 2;
+                var highResCol = tile.col * 2;
+
+                return !(
+                    priorLoaded.isLoaded(highResRow, highResCol) &&
+                    priorLoaded.isLoaded(highResRow + 1, highResCol) &&
+                    priorLoaded.isLoaded(highResRow, highResCol + 1) &&
+                    priorLoaded.isLoaded(highResRow + 1, highResCol + 1)
+                );
+            });
+        }
+
+        tiles.push.apply(tiles, additionalTiles);
     }, this);
+
+    return tiles;
 };
 
 /**
@@ -45,28 +91,62 @@ CompositeImage.prototype.getTiles = function ()
  */
 CompositeImage.prototype.updateFromCache = function (cache)
 {
-    this._tiles.forEach(function (tile)
+    this._resetLoadTracking();
+
+    this._levels.forEach(function (level, levelIndex)
     {
-        if (cache.has(tile.url))
-            this._urls[tile.url] = true;
+        var loaded = this._loadedByLevel[levelIndex];
+
+        level.tiles.forEach(function (tile)
+        {
+            if (cache.has(tile.url))
+                loaded.set(tile.row, tile.col, true);
+        });
     }, this);
 };
 
-/* TODO: ALGORITHM
- *
- * 1. Take a canvas covering the extent of the image
- * 2. For each zoom level, from best to worst:
- *     a. add every tile which is not completely
- *        covered to the list of tiles to render
- *     b. subtract that tile's bounding box from
- *        the uncovered area
- * 3. If there are uncovered regions, draw a white
- *    box or something? IDK.
- */
 CompositeImage.prototype.updateWithLoadedUrls = function (urls)
 {
     urls.forEach(function (url)
     {
-        this._urls[url] = true;
+        var entry = this._urlsToTiles[url];
+        this._loadedByLevel[entry.levelIndex].set(entry.row, entry.col, true);
     }, this);
 };
+
+function TileLoadMap(rows, cols)
+{
+    this._rows = rows;
+    this._cols = cols;
+
+    this._map = fill(rows).map(function ()
+    {
+        return fill(cols, false);
+    });
+}
+
+TileLoadMap.prototype.isLoaded = function (row, col)
+{
+    // Return true for out of bounds tiles because they
+    // don't need to load. (Unfortunately this will also
+    // mask errors.)
+    if (row >= this._rows || col >= this._cols)
+        return true;
+
+    return this._map[row][col];
+};
+
+TileLoadMap.prototype.set = function (row, col, value)
+{
+    this._map[row][col] = value;
+};
+
+function fill(count, value)
+{
+    var arr = new Array(count);
+
+    for (var i=0; i < count; i++)
+        arr[i] = value;
+
+    return arr;
+}

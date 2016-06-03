@@ -188,7 +188,12 @@ Renderer.prototype._paint = function ()
             if (this._isTileVisible(pageIndex, tile))
             {
                 renderedTiles.push(tile.url);
-                this._drawTile(pageIndex, tile, this._cache.get(tile.url));
+                var img = this._cache.get(tile.url);
+
+                if (!img)
+                    console.error('Image for ' + tile.url + ' not cached (this should not be possible)');
+                else
+                    this._drawTile(pageIndex, tile, img);
             }
         }, this);
     }, this);

@@ -125,6 +125,7 @@ function ViewerCore(element, options, publicInstance)
         options: options,
         outerElement: null,         // The native .diva-outer DOM object
         outerObject: {},            // $(settings.ID + 'outer'), for selecting the .diva-outer element
+        pageOverlays: [],
         pageTools: '',              // The string for page tools
         parentObject: parentObject, // JQuery object referencing the parent element
         plugins: [],                // Filled with the enabled plugins from the registry
@@ -1249,6 +1250,11 @@ function ViewerCore(element, options, publicInstance)
     this.getInternalState = function ()
     {
         return viewerState;
+    };
+
+    this.__addPageOverlay = function (overlay)
+    {
+        viewerState.pageOverlays.push(overlay);
     };
 
     this.getPagePositionAtViewportOffset = function (coords)

@@ -18,7 +18,7 @@ GridHandler.prototype.onDoubleClick = function (event, coords)
 
     this._viewerCore.reload({
         inGrid: false,
-        goDirectlyTo: position.anchorPage,
+        anchorPage: position.anchorPage,
         horizontalOffset: pageToViewportCenterOffset.x + position.offset.left,
         verticalOffset: pageToViewportCenterOffset.y + position.offset.top
     });

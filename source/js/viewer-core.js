@@ -107,7 +107,6 @@ function ViewerCore(element, options, publicInstance)
     // Many of these are declared with arbitrary values that are changed later on
     var viewerState = {
         currentPageIndex: 0,        // The current page in the viewport (center-most page)
-        horizontalOffset: 0,        // Distance from the center of the diva element to the top of the current page
         horizontalPadding: 0,       // Either the fixed padding or adaptive padding
         ID: null,                   // The prefix of the IDs of the elements (usually 1-diva-)
         initialKeyScroll: false,    // Holds the initial state of enableKeyScroll
@@ -136,7 +135,6 @@ function ViewerCore(element, options, publicInstance)
         selector: '',               // Uses the generated ID prefix to easily select elements
         throbberTimeoutID: -1,      // Holds the ID of the throbber loading timeout
         toolbar: null,              // Holds an object with some toolbar-related functions
-        verticalOffset: 0,          // Distance from the center of the diva element to the left side of the current page
         verticalPadding: 0,         // Either the fixed padding or adaptive padding
         viewHandler: null,
         viewport: null,             // Object caching the viewport dimensions
@@ -196,11 +194,6 @@ function ViewerCore(element, options, publicInstance)
             return attrs;
     };
 
-    var getPageData = function (pageIndex, attribute)
-    {
-        return settings.manifest.pages[pageIndex].d[settings.zoomLevel][attribute];
-    };
-
     // Reset some settings and empty the viewport
     var clearViewer = function ()
     {
@@ -239,23 +232,6 @@ function ViewerCore(element, options, publicInstance)
         if (hasChangedOption(newOptions, 'verticallyOriented'))
             viewerState.options.verticallyOriented = newOptions.verticallyOriented;
 
-        // Update page position (no event fired here)
-        if ('goDirectlyTo' in newOptions)
-        {
-            viewerState.options.goDirectlyTo = newOptions.goDirectlyTo;
-
-            if ('verticalOffset' in newOptions)
-                viewerState.verticalOffset = newOptions.verticalOffset;
-
-            if ('horizontalOffset' in newOptions)
-                viewerState.horizontalOffset = newOptions.horizontalOffset;
-        }
-        else
-        {
-            // Otherwise the default is to remain on the current page
-            viewerState.options.goDirectlyTo = settings.currentPageIndex;
-        }
-
         if (hasChangedOption(newOptions, 'inGrid') || hasChangedOption(newOptions, 'inBookLayout'))
         {
             if ('inGrid' in newOptions)
@@ -267,7 +243,7 @@ function ViewerCore(element, options, publicInstance)
             queuedEvents.push(["ViewDidSwitch", settings.inGrid]);
         }
 
-        // Note: prepareModeChange() depends on inGrid and the vertical/horizontalOffset (for now)
+        // Note: prepareModeChange() depends on inGrid and mutates vertical/horizontalOffset (for now)
         if (hasChangedOption(newOptions, 'inFullscreen'))
         {
             viewerState.options.inFullscreen = newOptions.inFullscreen;
@@ -289,11 +265,20 @@ function ViewerCore(element, options, publicInstance)
                 verticallyOriented: settings.verticallyOriented || settings.inGrid,
             };
 
+            var anchorPage = 'anchorPage' in newOptions ? newOptions.anchorPage : settings.currentPageIndex;
+
+            var currentOffsets;
+
+            if (!settings.loaded)
+                currentOffsets = {x: 0, y: 0};
+            else
+                currentOffsets = viewerState.renderer.getPageToViewportCenterOffset(anchorPage);
+
             var viewportPosition = {
                 zoomLevel: settings.inGrid ? null : settings.zoomLevel,
-                anchorPage: settings.goDirectlyTo,
-                verticalOffset: viewerState.verticalOffset,
-                horizontalOffset: viewerState.horizontalOffset
+                anchorPage: anchorPage,
+                horizontalOffset: 'horizontalOffset' in newOptions ? newOptions.horizontalOffset : currentOffsets.x,
+                verticalOffset: 'verticalOffset' in newOptions ? newOptions.verticalOffset : currentOffsets.y
             };
 
             var sourceProvider = getCurrentSourceProvider();
@@ -333,10 +318,10 @@ function ViewerCore(element, options, publicInstance)
     };
 
     // Handles switching in and out of fullscreen mode
-    var prepareModeChange = function (options)
+    var prepareModeChange = function (newOptions)
     {
         // Toggle the classes
-        var changeClass = options.inFullscreen ? 'addClass' : 'removeClass';
+        var changeClass = newOptions.inFullscreen ? 'addClass' : 'removeClass';
         viewerState.outerObject[changeClass]('diva-fullscreen');
         $('body')[changeClass]('diva-hide-scrollbar');
         settings.parentObject[changeClass]('diva-full-width');
@@ -347,19 +332,20 @@ function ViewerCore(element, options, publicInstance)
         viewerState.viewport.invalidate();
 
         // If this isn't the original load, the offsets matter, and the position isn't being changed...
-        if (!viewerState.loaded && !settings.inGrid && !('verticalOffset' in options))
+        if (viewerState.loaded && !settings.inGrid && !('verticalOffset' in newOptions))
         {
             //get the updated panel size
             var newHeight = settings.panelHeight;
             var newWidth = settings.panelWidth;
 
             //and re-center the new panel on the same point
-            viewerState.verticalOffset += ((storedHeight - newHeight) / 2);
-            viewerState.horizontalOffset += ((storedWidth - newWidth) / 2);
+            var priorOffset = viewerState.renderer.getPageToViewportCenterOffset(settings.currentPageIndex);
+            newOptions.verticalOffset = priorOffset.y + ((storedHeight - newHeight) / 2);
+            newOptions.horizontalOffset = priorOffset.x + ((storedWidth - newWidth) / 2);
         }
 
         //turn on/off escape key listener
-        if (options.inFullscreen)
+        if (newOptions.inFullscreen)
             $(document).on('keyup', escapeListener);
         else
             $(document).off('keyup', escapeListener);
@@ -574,29 +560,8 @@ function ViewerCore(element, options, publicInstance)
         var focalYToCenter = (pageRegion.top + focalPoint.offset.top) -
             (settings.viewport.top + (settings.viewport.height / 2));
 
-        function getPositionForZoomLevel(zoomLevel)
-        {
-            var zoomRatio = Math.pow(2, zoomLevel - initialZoomLevel);
-
-            // calculate horizontal/verticalOffset: distance from viewport center to page upper left corner
-            var horizontalOffset = (focalPoint.offset.left * zoomRatio) - focalXToCenter;
-            var verticalOffset = (focalPoint.offset.top * zoomRatio) - focalYToCenter;
-
-            return {
-                zoomLevel: zoomLevel,
-                anchorPage: focalPoint.anchorPage,
-                verticalOffset: verticalOffset,
-                horizontalOffset: horizontalOffset
-            };
-        }
-
         var initialZoomLevel = viewerState.oldZoomLevel = settings.zoomLevel;
         viewerState.options.zoomLevel = newZoomLevel;
-
-        var endPosition = getPositionForZoomLevel(newZoomLevel);
-        viewerState.options.goDirectlyTo = endPosition.anchorPage;
-        viewerState.verticalOffset = endPosition.verticalOffset;
-        viewerState.horizontalOffset = endPosition.horizontalOffset;
 
         viewerState.renderer.transitionViewportPosition({
             duration: 300,
@@ -608,7 +573,18 @@ function ViewerCore(element, options, publicInstance)
             },
             getPosition: function (parameters)
             {
-                return getPositionForZoomLevel(parameters.zoomLevel);
+                var zoomRatio = Math.pow(2, parameters.zoomLevel - initialZoomLevel);
+
+                // calculate horizontal/verticalOffset: distance from viewport center to page upper left corner
+                var horizontalOffset = (focalPoint.offset.left * zoomRatio) - focalXToCenter;
+                var verticalOffset = (focalPoint.offset.top * zoomRatio) - focalYToCenter;
+
+                return {
+                    zoomLevel: parameters.zoomLevel,
+                    anchorPage: focalPoint.anchorPage,
+                    verticalOffset: verticalOffset,
+                    horizontalOffset: horizontalOffset
+                };
             },
             onEnd: function (info)
             {
@@ -640,18 +616,15 @@ function ViewerCore(element, options, publicInstance)
     {
         pageIndex = (typeof(pageIndex) === "undefined" ? settings.currentPageIndex : pageIndex);
 
+        if (anchor === 'top')
+            return Math.floor(settings.panelHeight / 2);
+
+        var pageHeight = viewerState.renderer.getPageDimensions(pageIndex).height;
+
         if (anchor === "center" || anchor === "centre") //how you can tell an American coded this
-        {
-            return parseInt(getPageData(pageIndex, "h") / 2, 10);
-        }
-        else if (anchor === "bottom")
-        {
-            return parseInt(getPageData(pageIndex, "h") - settings.panelHeight / 2, 10);
-        }
-        else
-        {
-            return parseInt(settings.panelHeight / 2, 10);
-        }
+            return Math.floor(pageHeight / 2);
+
+        return Math.floor(pageHeight - settings.panelHeight / 2);
     };
 
     //Same as getYOffset with "left" and "right" as acceptable values instead of "top" and "bottom"
@@ -660,17 +633,14 @@ function ViewerCore(element, options, publicInstance)
         pageIndex = (typeof(pageIndex) === "undefined" ? settings.currentPageIndex : pageIndex);
 
         if (anchor === "left")
-        {
-            return parseInt(settings.panelWidth / 2, 10);
-        }
-        else if (anchor === "right")
-        {
-            return parseInt(getPageData(pageIndex, "w") - settings.panelWidth / 2, 10);
-        }
-        else
-        {
-            return parseInt(getPageData(pageIndex, "w") / 2, 10);
-        }
+            return Math.floor(settings.panelWidth / 2);
+
+        var pageWidth = viewerState.renderer.getPageDimensions(pageIndex).width;
+
+        if (anchor === "right")
+            return Math.floor(pageWidth - settings.panelWidth / 2);
+
+        return Math.floor(pageWidth / 2);
     };
 
     // updates panelHeight/panelWidth on resize
@@ -681,22 +651,11 @@ function ViewerCore(element, options, publicInstance)
         // FIXME(wabain): This should really only be called after initial load
         if (viewerState.renderer)
         {
-            updateOffsets();
-            viewerState.renderer.goto(settings.currentPageIndex, viewerState.verticalOffset, viewerState.horizontalOffset);
+            var pageOffset = viewerState.renderer.getPageToViewportCenterOffset(settings.currentPageIndex);
+            viewerState.renderer.goto(settings.currentPageIndex, pageOffset.y, pageOffset.x);
         }
 
         return true;
-    };
-
-    var updateOffsets = function ()
-    {
-        var pageOffset = viewerState.renderer.layout.getPageToViewportCenterOffset(settings.currentPageIndex, viewerState.viewport);
-
-        if (pageOffset)
-        {
-            viewerState.horizontalOffset = pageOffset.x;
-            viewerState.verticalOffset = pageOffset.y;
-        }
     };
 
     // Bind mouse events (drag to scroll, double-click)
@@ -721,22 +680,8 @@ function ViewerCore(element, options, publicInstance)
 
         viewerState.resizeTimer = setTimeout(function ()
         {
-            var pageOffset = viewerState.renderer.layout.getPageToViewportCenterOffset(settings.currentPageIndex, viewerState.viewport);
-
-            if (pageOffset)
-            {
-                reloadViewer({
-                    goDirectlyTo: settings.currentPageIndex,
-                    verticalOffset: pageOffset.y,
-                    horizontalOffset: pageOffset.x
-                });
-            }
-            else
-            {
-                reloadViewer({
-                    goDirectlyTo: settings.currentPageIndex
-                });
-            }
+            // FIXME: This may be overkill. Invalidate+adjust should be enough.
+            reloadViewer({});
         }, 200);
     };
 
@@ -806,8 +751,6 @@ function ViewerCore(element, options, publicInstance)
         {
             publish("ViewerDidScrollUp", primaryScroll);
         }
-
-        updateOffsets();
     };
 
     // Binds most of the event handlers (some more in createToolbar)
@@ -1071,69 +1014,41 @@ function ViewerCore(element, options, publicInstance)
         // Adjust the document panel dimensions
         updatePanelSize();
 
+        var initialPageSpecified = loadOptions.anchorPage != null;
         var needsXCoord, needsYCoord;
 
-        var anchoredVertically = false;
-        var anchoredHorizontally = false;
-
-        if (loadOptions.goDirectlyTo == null)
+        if (!initialPageSpecified)
         {
-            loadOptions.goDirectlyTo = settings.goDirectlyTo;
+            loadOptions.anchorPage = settings.goDirectlyTo;
             needsXCoord = needsYCoord = true;
         }
         else
         {
-            needsXCoord = loadOptions.horizontalOffset == null || isNaN(loadOptions.horizontalOffset);
-            needsYCoord = loadOptions.verticalOffset == null || isNaN(loadOptions.verticalOffset);
+            needsXCoord = loadOptions.horizontalOffset == null;
+            needsYCoord = loadOptions.verticalOffset == null;
         }
 
-        // Set default values for the horizontal and vertical offsets
         if (needsXCoord)
         {
-            // FIXME: What if inBookLayout/verticallyOriented is changed by loadOptions?
-            if (loadOptions.goDirectlyTo === 0 && settings.inBookLayout && settings.verticallyOriented)
+            loadOptions.horizontalOffset = function ()
             {
-                // if in book layout, center the first opening by default
-                loadOptions.horizontalOffset = viewerState.horizontalPadding;
-            }
-            else
-            {
-                anchoredHorizontally = true;
-                loadOptions.horizontalOffset = getXOffset(loadOptions.goDirectlyTo, "center");
-            }
+                if (!initialPageSpecified && settings.inBookLayout && settings.verticallyOriented)
+                    return 0;
+
+                return getXOffset(loadOptions.anchorPage, 'center');
+            };
         }
 
         if (needsYCoord)
         {
-            anchoredVertically = true;
-            loadOptions.verticalOffset = getYOffset(loadOptions.goDirectlyTo, "top");
+            loadOptions.verticalOffset = function ()
+            {
+                return getYOffset(loadOptions.anchorPage, 'top');
+            };
         }
 
         reloadViewer(loadOptions);
 
-        //prep dimensions one last time now that pages have loaded
-        updatePanelSize();
-
-        // FIXME: This is a hack to ensure that the outerElement scrollbars are taken into account
-        if (settings.verticallyOriented)
-            viewerState.innerElement.style.minWidth = settings.panelWidth + 'px';
-        else
-            viewerState.innerElement.style.minHeight = settings.panelHeight + 'px';
-
-        // FIXME: If the page was supposed to be positioned relative to the viewport we need to
-        // recalculate it to take into account the scrollbars
-        if (anchoredVertically || anchoredHorizontally)
-        {
-            if (anchoredVertically)
-                viewerState.verticalOffset = getYOffset(settings.currentPageIndex, "top");
-
-            if (anchoredHorizontally)
-                viewerState.horizontalOffset = getXOffset(settings.currentPageIndex, "center");
-
-            viewerState.renderer.goto(settings.currentPageIndex, viewerState.verticalOffset, viewerState.horizontalOffset);
-        }
-
-        // signal that everything should be set up and ready to go.
         viewerState.loaded = true;
 
         publish("ViewerDidLoad", settings);

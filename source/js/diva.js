@@ -158,10 +158,7 @@ module.exports = diva;
             //if in grid, switch out of grid
             reloadViewer({
                 inGrid: false,
-                verticallyOriented: verticallyOriented,
-                goDirectlyTo: settings.currentPageIndex,
-                verticalOffset: divaState.viewerCore.getYOffset(),
-                horizontalOffset: divaState.viewerCore.getXOffset()
+                verticallyOriented: verticallyOriented
             });
 
             return verticallyOriented;
@@ -238,12 +235,17 @@ module.exports = diva;
 
             if (pageIndex !== null)
             {
+                options.anchorPage = pageIndex;
+
                 var horizontalOffset = parseInt(state.x, 10);
+
+                if (!isNaN(horizontalOffset))
+                    options.horizontalOffset = horizontalOffset;
+
                 var verticalOffset = parseInt(state.y, 10);
 
-                options.goDirectlyTo = pageIndex;
-                options.horizontalOffset = horizontalOffset;
-                options.verticalOffset = verticalOffset;
+                if (!isNaN(verticalOffset))
+                    options.verticalOffset = verticalOffset;
             }
 
             return options;

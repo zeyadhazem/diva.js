@@ -79,8 +79,11 @@ Renderer.prototype.load = function (config, viewportPosition, sourceResolver)
         debug('Reload, no size change');
     }
 
+    var verticalOffset = getComputedOffset(viewportPosition.verticalOffset);
+    var horizontalOffset = getComputedOffset(viewportPosition.horizontalOffset);
+
     // FIXME: What hooks should be called here?
-    this.goto(viewportPosition.anchorPage, viewportPosition.verticalOffset, viewportPosition.horizontalOffset);
+    this.goto(viewportPosition.anchorPage, verticalOffset, horizontalOffset);
 
     if (this._canvas.parentNode !== this._outerElement)
         this._outerElement.insertBefore(this._canvas, this._outerElement.firstChild);
@@ -88,6 +91,11 @@ Renderer.prototype.load = function (config, viewportPosition, sourceResolver)
     if (this._hooks.onViewDidLoad)
         this._hooks.onViewDidLoad();
 };
+
+function getComputedOffset(offset)
+{
+    return typeof offset === 'function' ? offset() : offset;
+}
 
 Renderer.prototype._setViewportPosition = function (viewportPosition)
 {

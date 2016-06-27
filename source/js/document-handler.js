@@ -52,9 +52,10 @@ DocumentHandler.prototype.onPinch = function (event, coords, startDistance, endD
     var centerOffset = layout.getPageToViewportCenterOffset(position.anchorPage, viewerState.viewport);
     var scaleRatio = 1 / Math.pow(2, settings.zoomLevel - newZoomLevel);
 
+    // FIXME: This shouldn't require a reload
     this._viewerCore.reload({
         zoomLevel: newZoomLevel,
-        goDirectlyTo: position.anchorPage,
+        anchorPage: position.anchorPage,
         horizontalOffset: (centerOffset.x - position.offset.left) + position.offset.left * scaleRatio,
         verticalOffset: (centerOffset.y - position.offset.top) + position.offset.top * scaleRatio
     });

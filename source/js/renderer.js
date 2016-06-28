@@ -216,6 +216,20 @@ Renderer.prototype._paint = function ()
         }, this);
     }, this);
 
+    var ctx = this._ctx;
+    ctx.save();
+    ctx.strokeStyle = '#66cc66';
+    ctx.beginPath();
+
+    ctx.moveTo(this._viewport.width / 2, 0);
+    ctx.lineTo(this._viewport.width / 2, this._viewport.height);
+
+    ctx.moveTo(0, this._viewport.height / 2);
+    ctx.lineTo(this._viewport.width, this._viewport.height / 2);
+
+    ctx.stroke();
+    ctx.restore();
+
     var cache = this._cache;
 
     var changes = findChanges(this._renderedTiles || [], renderedTiles);
@@ -366,7 +380,12 @@ Renderer.prototype.goto = function (pageIndex, verticalOffset, horizontalOffset)
     this._goto(pageIndex, verticalOffset, horizontalOffset);
     if (this._hooks.onViewDidUpdate)
     {
-        this._hooks.onViewDidUpdate(this._renderedPages.slice(), pageIndex);
+        this._hooks.onViewDidUpdate(this._renderedPages.slice(), {
+            zoomLevel: this._zoomLevel,
+            anchorPage: pageIndex,
+            horizontalOffset: horizontalOffset,
+            verticalOffset: verticalOffset
+        });
     }
 };
 
@@ -393,6 +412,7 @@ Renderer.prototype.transitionViewportPosition = function (options)
 
     var getPosition = options.getPosition;
     var self = this;
+    var position = null;
 
     var onViewDidTransition = this._hooks.onViewDidTransition;
 
@@ -401,6 +421,8 @@ Renderer.prototype.transitionViewportPosition = function (options)
         parameters: options.parameters,
         onUpdate: function (values)
         {
+            position = getPosition(values);
+
             // TODO: Do image preloading, work with that
             self._setViewportPosition(getPosition(values));
 
@@ -414,7 +436,7 @@ Renderer.prototype.transitionViewportPosition = function (options)
 
             if (self._hooks.onViewDidUpdate && !info.interrupted)
             {
-                self._hooks.onViewDidUpdate(self._renderedPages.slice(), null);
+                self._hooks.onViewDidUpdate(self._renderedPages.slice(), position);
             }
         }
     });

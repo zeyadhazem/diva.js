@@ -118,6 +118,12 @@ function ViewerCore(element, options, publicInstance)
         isScrollable: true,         // Used in enable/disableScrollable public methods
         isZooming: false,           // Flag to keep track of whether zooming is still in progress, for handleZoom
         loaded: false,              // A flag for when everything is loaded and ready to go.
+        // The zoom-independent logical offset (which may not be what the viewport can actually render)
+        logicalOffset: {
+            anchorPage: 0,
+            x: 0,
+            y: 0
+        },
         manifest: null,
         mobileWebkit: false,        // Checks if the user is on a touch device (iPad/iPod/iPhone/Android)
         numPages: 0,                // Number of pages in the array
@@ -394,12 +400,14 @@ function ViewerCore(element, options, publicInstance)
                 onViewDidLoad: function ()
                 {
                     updatePageOverlays();
+                    refreshLogicalOffset(null);
                     viewerState.viewHandler.onViewDidLoad();
                 },
-                onViewDidUpdate: function (pages, targetPage)
+                onViewDidUpdate: function (pages, targetPosition)
                 {
                     updatePageOverlays();
-                    viewerState.viewHandler.onViewDidUpdate(pages, targetPage);
+                    refreshLogicalOffset(targetPosition);
+                    viewerState.viewHandler.onViewDidUpdate(pages, targetPosition);
                 },
                 onViewDidTransition: function ()
                 {
@@ -544,7 +552,7 @@ function ViewerCore(element, options, publicInstance)
             var currentRegion = viewerState.renderer.layout.getPageRegion(settings.currentPageIndex);
 
             focalPoint = {
-                anchorPage: settings.currentPageIndex,
+                anchorPage: anchorPage,
                 offset: {
                     left: (viewport.width / 2) - (currentRegion.left - viewport.left),
                     top: (viewport.height / 2) - (currentRegion.top - viewport.top)
@@ -554,7 +562,7 @@ function ViewerCore(element, options, publicInstance)
 
         var pageRegion = viewerState.renderer.layout.getPageRegion(focalPoint.anchorPage);
 
-        // calculate distance from cursor coordinates to center of viewport
+        // calculate distance from focal point to center of viewport
         var focalXToCenter = (pageRegion.left + focalPoint.offset.left) -
             (settings.viewport.left + (settings.viewport.width / 2));
         var focalYToCenter = (pageRegion.top + focalPoint.offset.top) -
@@ -651,11 +659,39 @@ function ViewerCore(element, options, publicInstance)
         // FIXME(wabain): This should really only be called after initial load
         if (viewerState.renderer)
         {
-            var pageOffset = viewerState.renderer.getPageToViewportCenterOffset(settings.currentPageIndex);
-            viewerState.renderer.goto(settings.currentPageIndex, pageOffset.y, pageOffset.x);
+            var offset = viewerState.logicalOffset;
+            var zoomRatio = Math.pow(2, settings.zoomLevel - viewerState.manifest.maxZoom);
+            viewerState.renderer.goto(offset.anchorPage, offset.y * zoomRatio, offset.x * zoomRatio);
         }
 
         return true;
+    };
+
+    var refreshLogicalOffset = function (targetPosition)
+    {
+        var anchorPage, pageOffset;
+
+        if (targetPosition)
+        {
+            anchorPage = targetPosition.anchorPage;
+            pageOffset = {
+                x: targetPosition.horizontalOffset,
+                y: targetPosition.verticalOffset
+            };
+        }
+        else
+        {
+            anchorPage = settings.currentPageIndex;
+            pageOffset = viewerState.renderer.getPageToViewportCenterOffset(anchorPage);
+        }
+
+        var zoomRatio = Math.pow(2, viewerState.manifest.maxZoom - settings.zoomLevel);
+
+        viewerState.logicalOffset = {
+            anchorPage: anchorPage,
+            x: pageOffset.x * zoomRatio,
+            y: pageOffset.y * zoomRatio
+        };
     };
 
     // Bind mouse events (drag to scroll, double-click)

@@ -78,10 +78,10 @@ DocumentHandler.prototype.onViewDidLoad = function ()
     this._viewerCore.publish("DocumentDidLoad", currentPageIndex, fileName);
 };
 
-DocumentHandler.prototype.onViewDidUpdate = function (renderedPages, targetPage)
+DocumentHandler.prototype.onViewDidUpdate = function (renderedPages, targetPosition)
 {
-    var currentPage = (targetPage !== null) ?
-        targetPage :
+    var currentPage = (targetPosition !== null) ?
+        targetPosition.anchorPage :
         getCentermostPage(renderedPages, this._viewerCore.getCurrentLayout(), this._viewerCore.getViewport());
 
     // Don't change the current page if there is no page in the viewport
@@ -89,8 +89,8 @@ DocumentHandler.prototype.onViewDidUpdate = function (renderedPages, targetPage)
     if (currentPage !== null)
         this._viewerCore.setCurrentPage(currentPage);
 
-    if (targetPage !== null)
-        this._viewerCore.publish("ViewerDidJump", targetPage);
+    if (targetPosition !== null)
+        this._viewerCore.publish("ViewerDidJump", targetPosition.anchorPage);
 
     this._handleZoomLevelChange();
 };

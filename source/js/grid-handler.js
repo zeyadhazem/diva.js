@@ -42,11 +42,11 @@ GridHandler.prototype.onViewDidLoad = function ()
     /* No-op */
 };
 
-GridHandler.prototype.onViewDidUpdate = function (renderedPages, targetPage)
+GridHandler.prototype.onViewDidUpdate = function (pages, targetPosition)
 {
-    if (targetPage !== null)
+    if (targetPosition !== null)
     {
-        this._viewerCore.setCurrentPage(targetPage);
+        this._viewerCore.setCurrentPage(targetPosition.anchorPage);
         return;
     }
 

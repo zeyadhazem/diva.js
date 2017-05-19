@@ -36,6 +36,7 @@ module.exports = [{
     plugins: (process.env.NODE_ENV === "production") ? productionPlugins() : developmentPlugins()
 }, {
     entry: {
+        'pixel': './source/js/plugins/pixel.js',
         'download': './source/js/plugins/download.js',
         'manipulation': './source/js/plugins/manipulation.js'
     },

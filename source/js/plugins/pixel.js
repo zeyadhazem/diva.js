@@ -16,6 +16,7 @@ export default class PixelPlugin
         this.pageToolsIcon = this.createIcon();
         this.handle = null;
         this.pluginIndex = null;
+        this.opacity = 0.3;
 
         this.setPluginIndex();
     }
@@ -32,8 +33,44 @@ export default class PixelPlugin
 
     // Subscribes to VisibleTilesDidLoad event to start drawing highlights.
     // Takes an array of highlighted objects
-    initiateHighlighting(highlighted)
+    activatePlugin(highlighted)
     {
+        this.createPluginElements();
+        let handle = this.subscribeToEvent(highlighted);
+        this.core.getSettings().renderer._paint();  // Repaint the tiles to retrigger VisibleTilesDidLoad
+        this.activated = true;
+        return handle;
+    }
+
+    deactivatePlugin(){
+        Diva.Events.unsubscribe(this.handle);
+        this.core.getSettings().renderer._paint(); // Repaint the tiles to make the highlights disappear off the page
+        this.activated = false;
+    }
+
+    createPluginElements(){
+        var x = global.document.createElement("INPUT");
+        x.setAttribute("id", "opacity");
+        x.setAttribute("type", "range");
+        x.setAttribute('max', 100);
+        x.setAttribute('min', 0);
+        x.setAttribute('value', 50);
+        global.document.body.appendChild(x);
+
+        var rangeInput = document.getElementById("opacity");
+
+        var instance = this;
+        rangeInput.addEventListener("change", function() {
+            instance.opacity = rangeInput.value/100;
+            instance.core.getSettings().renderer._paint();
+        });
+    }
+
+    destroyPluginElements(){
+
+    }
+
+    subscribeToEvent(highlighted){
         let pluginIndex = this.pluginIndex;
 
         let handle = Diva.Events.subscribe('VisibleTilesDidLoad', function(args){
@@ -42,14 +79,20 @@ export default class PixelPlugin
         return handle;
     }
 
+
+
+
     drawHighlights(highlights, args)
     {
+
+        console.log(this.opacity);
+
         var pageIndex = args[0],
             zoomLevel = args[1];
 
         highlights.forEach((highlighted) =>
             {
-                let opacity = 0.25;
+                let opacity = this.opacity;
                 let renderer = this.core.getSettings().renderer;
                 let scaleRatio = Math.pow(2,zoomLevel);
 
@@ -117,15 +160,11 @@ export default class PixelPlugin
             let highlight5 = new HighlightArea(50, 120, 50, 10, 0, 4);
             let highlight6 = new HighlightArea(30, 180, 60, 20, 0, 5);
             let highlighted = [highlight1, highlight2, highlight3, highlight4, highlight5, highlight6];
-            this.handle = this.initiateHighlighting(highlighted);
-            this.core.getSettings().renderer._paint();  // Repaint the tiles to retrigger VisibleTilesDidLoad
-            this.activated = true;
+            this.handle = this.activatePlugin(highlighted);
         }
         else
         {
-            Diva.Events.unsubscribe(this.handle);
-            this.core.getSettings().renderer._paint(); // Repaint the tiles to make the highlights disappear off the page
-            this.activated = false;
+            this.deactivatePlugin();
         }
     }
 

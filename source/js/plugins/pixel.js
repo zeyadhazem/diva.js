@@ -15,7 +15,7 @@ export default class PixelPlugin
         this.activated = false;
         this.pageToolsIcon = this.createIcon();
         this.handle = null;
-        this.pluginIndex = null;
+        this.layers = null;
     }
 
     // Subscribes to VisibleTilesDidLoad event to start drawing highlights.
@@ -31,12 +31,14 @@ export default class PixelPlugin
         return handle;
     }
 
-    deactivatePlugin(layer)
+    deactivatePlugin(layers)
     {
         Diva.Events.unsubscribe(this.handle);
         this.core.getSettings().renderer._paint(); // Repaint the tiles to make the highlights disappear off the page
         this.activated = false;
-        this.destroyPluginElements(layer);
+        layers.forEach((layer) => {
+            this.destroyPluginElements(layer);
+        });
     }
 
     createPluginElements(layer)
@@ -50,7 +52,6 @@ export default class PixelPlugin
         global.document.body.appendChild(x);
 
         var rangeInput = document.getElementById("layer " + layer.layerType);
-        console.log(rangeInput);
 
         var instance = this;
         rangeInput.addEventListener("input", function()
@@ -82,7 +83,7 @@ export default class PixelPlugin
 
         layers.forEach((layer) => {
             var highlights = layer.highlights;
-            
+
             highlights.forEach((highlighted) =>
                 {
                     let opacity = layer.opacity;
@@ -215,7 +216,6 @@ export class HighlightArea
     }
 }
 
-
 export class Layer
 {
     constructor (layerType, opacity, highlights)
@@ -223,8 +223,6 @@ export class Layer
         this.layerType = layerType;
         this.opacity = opacity;
         this.highlights = highlights;
-
-        console.log("from layer", this.highlights);
     }
 
     addHighlightToLayer(highlight){

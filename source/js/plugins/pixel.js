@@ -16,15 +16,14 @@ export default class PixelPlugin
         this.pageToolsIcon = this.createIcon();
         this.handle = null;
         this.pluginIndex = null;
-        this.opacity = 0.3;
     }
 
     // Subscribes to VisibleTilesDidLoad event to start drawing highlights.
     // Takes an array of highlighted objects
-    activatePlugin(highlighted)
+    activatePlugin(layer)
     {
-        this.createPluginElements();
-        let handle = this.subscribeToEvent(highlighted);
+        this.createPluginElements(layer);
+        let handle = this.subscribeToEvent(layer);
         this.core.getSettings().renderer._paint();  // Repaint the tiles to retrigger VisibleTilesDidLoad
         this.activated = true;
         return handle;
@@ -38,48 +37,51 @@ export default class PixelPlugin
         this.destroyPluginElements();
     }
 
-    createPluginElements()
+    createPluginElements(layer)
     {
         var x = global.document.createElement("INPUT");
-        x.setAttribute("id", "opacity");
+        x.setAttribute("id", "layer " + layer.layerType);
         x.setAttribute("type", "range");
         x.setAttribute('max', 100);
         x.setAttribute('min', 0);
         x.setAttribute('value', this.opacity*100);
         global.document.body.appendChild(x);
 
-        var rangeInput = document.getElementById("opacity");
+        var rangeInput = document.getElementById("layer " + layer.layerType);
+        console.log(rangeInput);
 
         var instance = this;
         rangeInput.addEventListener("input", function()
         {
-            instance.opacity = rangeInput.value/100;
+            layer.opacity = rangeInput.value/100;
             instance.core.getSettings().renderer._paint();
         });
     }
 
-    destroyPluginElements(){
-        var rangeInput = document.getElementById("opacity");
+    destroyPluginElements(layer){
+        var rangeInput = document.getElementById("layer " + layer.layerType);
         global.document.body.removeChild(rangeInput);
     }
 
-    subscribeToEvent(highlighted){
+    subscribeToEvent(layer){
         let instance = this;
 
-        let handle = Diva.Events.subscribe('VisibleTilesDidLoad', function(args){
-            instance.drawHighlights(highlighted, args);
+        let handle = Diva.Events.subscribe('VisibleTilesDidLoad', function(args)
+        {
+            instance.drawHighlights(layer, args);
         });
         return handle;
     }
 
-    drawHighlights(highlights, args)
+    drawHighlights(layer, args)
     {
         var pageIndex = args[0],
             zoomLevel = args[1];
+        var highlights = layer.highlights;
 
         highlights.forEach((highlighted) =>
             {
-                let opacity = this.opacity;
+                let opacity = layer.opacity;
                 let renderer = this.core.getSettings().renderer;
                 let scaleRatio = Math.pow(2,zoomLevel);
 
@@ -105,7 +107,7 @@ export default class PixelPlugin
 
                     //Draw the rectangle
                     let rgba = null;
-                    switch (highlighted.layerType)
+                    switch (layer.layerType)
                     {
                         case 0:
                             rgba = "rgba(51, 102, 255, " + opacity + ")";
@@ -141,14 +143,18 @@ export default class PixelPlugin
         if (!this.activated)
         {
             // Create the array of highlights to pass to drawHighlights function
-            let highlight1 = new HighlightArea(23, 42, 24, 24, 0, 0);
-            let highlight2 = new HighlightArea(48, 50, 57, 5, 0, 1);
-            let highlight3 = new HighlightArea(75, 80, 30, 10, 0, 2);
-            let highlight4 = new HighlightArea(21, 77, 12, 13.5, 0, 3);
-            let highlight5 = new HighlightArea(50, 120, 50, 10, 0, 4);
-            let highlight6 = new HighlightArea(30, 180, 60, 20, 0, 5);
+            let highlight1 = new HighlightArea(23, 42, 24, 24, 0);
+            let highlight2 = new HighlightArea(48, 50, 57, 5, 0);
+            let highlight3 = new HighlightArea(75, 80, 30, 10, 0);
+            let highlight4 = new HighlightArea(21, 77, 12, 13.5, 0);
+            let highlight5 = new HighlightArea(50, 120, 50, 10, 0);
+            let highlight6 = new HighlightArea(30, 180, 60, 20, 0);
             let highlighted = [highlight1, highlight2, highlight3, highlight4, highlight5, highlight6];
-            this.handle = this.activatePlugin(highlighted);
+            let layer = new Layer(0,0.3, highlighted)
+
+            console.log("From activated", layer.highlights);
+
+            this.handle = this.activatePlugin(layer);
         }
         else
         {
@@ -190,17 +196,32 @@ export default class PixelPlugin
 
 export class HighlightArea
 {
-    constructor (relativeRectOriginX, relativeRectOriginY, relativeRectWidth, relativeRectHeight, pageIndex, layerType)
+    constructor (relativeRectOriginX, relativeRectOriginY, relativeRectWidth, relativeRectHeight, pageIndex)
     {
         this.relativeRectOriginX = relativeRectOriginX;
         this.relativeRectOriginY = relativeRectOriginY;
         this.relativeRectWidth = relativeRectWidth;
         this.relativeRectHeight = relativeRectHeight;
         this.pageIndex = pageIndex;
-        this.layerType = layerType;
     }
 }
 
+
+export class Layer
+{
+    constructor (layerType, opacity, highlights)
+    {
+        this.layerType = layerType;
+        this.opacity = opacity;
+        this.highlights = highlights;
+
+        console.log("from layer", this.highlights);
+    }
+
+    addHighlightToLayer(highlight){
+        this.highlights.push(highlight);
+    }
+}
 
 PixelPlugin.prototype.pluginName = "pixel";
 PixelPlugin.prototype.isPageTool = true;

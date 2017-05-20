@@ -17,18 +17,6 @@ export default class PixelPlugin
         this.handle = null;
         this.pluginIndex = null;
         this.opacity = 0.3;
-
-        this.setPluginIndex();
-    }
-
-    // Calculates the index of the plugin in pluginInstances
-    setPluginIndex()
-    {
-        var instance = this;
-        Diva.Events.subscribe('ObjectDidLoad', function(){
-            let pluginIndex = this.getSettings().pluginInstances.indexOf(instance)
-            this.getSettings().pluginInstances[pluginIndex].pluginIndex = pluginIndex;
-        });
     }
 
     // Subscribes to VisibleTilesDidLoad event to start drawing highlights.
@@ -42,51 +30,50 @@ export default class PixelPlugin
         return handle;
     }
 
-    deactivatePlugin(){
+    deactivatePlugin()
+    {
         Diva.Events.unsubscribe(this.handle);
         this.core.getSettings().renderer._paint(); // Repaint the tiles to make the highlights disappear off the page
         this.activated = false;
+        this.destroyPluginElements();
     }
 
-    createPluginElements(){
+    createPluginElements()
+    {
         var x = global.document.createElement("INPUT");
         x.setAttribute("id", "opacity");
         x.setAttribute("type", "range");
         x.setAttribute('max', 100);
         x.setAttribute('min', 0);
-        x.setAttribute('value', 50);
+        x.setAttribute('value', this.opacity*100);
         global.document.body.appendChild(x);
 
         var rangeInput = document.getElementById("opacity");
 
         var instance = this;
-        rangeInput.addEventListener("change", function() {
+        rangeInput.addEventListener("input", function()
+        {
             instance.opacity = rangeInput.value/100;
             instance.core.getSettings().renderer._paint();
         });
     }
 
     destroyPluginElements(){
-
+        var rangeInput = document.getElementById("opacity");
+        global.document.body.removeChild(rangeInput);
     }
 
     subscribeToEvent(highlighted){
-        let pluginIndex = this.pluginIndex;
+        let instance = this;
 
         let handle = Diva.Events.subscribe('VisibleTilesDidLoad', function(args){
-            this.getSettings().pluginInstances[pluginIndex].drawHighlights(highlighted, args);
+            instance.drawHighlights(highlighted, args);
         });
         return handle;
     }
 
-
-
-
     drawHighlights(highlights, args)
     {
-
-        console.log(this.opacity);
-
         var pageIndex = args[0],
             zoomLevel = args[1];
 
@@ -118,7 +105,8 @@ export default class PixelPlugin
 
                     //Draw the rectangle
                     let rgba = null;
-                    switch (highlighted.layerType){
+                    switch (highlighted.layerType)
+                    {
                         case 0:
                             rgba = "rgba(51, 102, 255, " + opacity + ")";
                             break;

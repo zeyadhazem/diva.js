@@ -16,3 +16,4 @@ tags
 /node_modules/
 /coverage/
 /build/
+source/js/plugins/pixel.js

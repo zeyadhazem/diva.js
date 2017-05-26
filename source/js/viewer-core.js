@@ -780,7 +780,7 @@ export default class ViewerCore
     bindMouseEvents ()
     {
         // Set drag scroll on the viewport object
-        this.viewerState.viewportObject.classList.add('dragscroll');
+        //this.viewerState.viewportObject.classList.add('dragscroll');
 
         gestureEvents.onDoubleClick(this.viewerState.viewportObject, (event, coords) =>
         {

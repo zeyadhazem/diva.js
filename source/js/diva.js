@@ -135,10 +135,11 @@ class Diva
     {
         if (typeof this.settings.objectData === 'object')
         {
+            let self = this;
             // Defer execution until initialization has completed
             setTimeout(function ()
             {
-                this._loadObjectData(this.settings.objectData, this.hashState);
+                self._loadObjectData(self.settings.objectData, self.hashState);
             }, 0);
         }
         else
